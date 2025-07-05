@@ -41,6 +41,11 @@ const navItems = [
     href: "/sales",
     icon: ShoppingCart,
   },
+   {
+    name: "Purchases",
+    href: "/purchases",
+    icon: ShoppingCart,
+  },
   {
     name: "AC Parts",
     href: "/ac-parts",

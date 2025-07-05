@@ -8,11 +8,8 @@ export default function CategoriesPage() {
         <h1 className="text-3xl font-bold tracking-tight">Categories</h1>
       </div>
 
-      <Card>
-        <CardContent>
           <CategoryManager />
-        </CardContent>
-      </Card>
+
     </div>
   )
 }

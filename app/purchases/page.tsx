@@ -17,15 +17,15 @@ import {
 import { 
   Search, 
   Eye, 
-  CalendarRange, 
   Download, 
   Filter, 
   Loader2, 
   Trash2, 
   AlertCircle,
-  X
+  X,
+  Plus,
+  Package
 } from "lucide-react"
-import { NewSaleButton } from "@/components/new-sale-button"
 import apiClient from "@/utils/apiClient"
 import { format } from "date-fns"
 import { useToast } from "@/hooks/use-toast"
@@ -50,12 +50,11 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Pagination } from "@/components/Pagination"
 
-interface Sale {
+interface Purchase {
   _id: string
   reference: string
   createdAt: string
-  customer: string
-  paymentMethod: string
+  notes: string
   totalAmount: number
   products: Array<{
     product: {
@@ -65,21 +64,19 @@ interface Sale {
     }
     quantity: number
     price: number
-    discount: number
     total: number
   }>
-  notes: string
   createdBy?: {
     _id: string
     name: string
   }
 }
 
-export default function SalesPage() {
+export default function PurchasesPage() {
   const router = useRouter()
   const { toast } = useToast()
-  const [sales, setSales] = useState<Sale[]>([])
-  const [filteredSales, setFilteredSales] = useState<Sale[]>([])
+  const [purchases, setPurchases] = useState<Purchase[]>([])
+  const [filteredPurchases, setFilteredPurchases] = useState<Purchase[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined)
@@ -88,7 +85,7 @@ export default function SalesPage() {
   
   // Deletion state
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
-  const [deletingSaleId, setDeletingSaleId] = useState<string | null>(null)
+  const [deletingPurchaseId, setDeletingPurchaseId] = useState<string | null>(null)
   const [deletingLoading, setDeletingLoading] = useState(false)
   
   // Pagination state
@@ -100,35 +97,35 @@ export default function SalesPage() {
   const [tempSearchTerm, setTempSearchTerm] = useState("")
   const [tempDateRange, setTempDateRange] = useState<DateRange | undefined>(undefined)
 
-  // Load sales on initial render
+  // Load purchases on initial render
   useEffect(() => {
-    fetchSales()
+    fetchPurchases()
   }, [])
   
   // Apply search filter
   useEffect(() => {
-    let result = [...sales]
+    let result = [...purchases]
     
     if (searchTerm) {
       const lowerCaseSearch = searchTerm.toLowerCase()
       result = result.filter(
-        sale => 
-          (sale.customer?.toLowerCase().includes(lowerCaseSearch)) ||
-          sale.reference?.toLowerCase().includes(lowerCaseSearch) ||
-          sale.totalAmount.toString().includes(searchTerm)
+        purchase => 
+          (purchase.notes?.toLowerCase().includes(lowerCaseSearch)) ||
+          purchase.reference?.toLowerCase().includes(lowerCaseSearch) ||
+          purchase.totalAmount.toString().includes(searchTerm)
       )
     }
     
-    setFilteredSales(result)
-  }, [sales, searchTerm])
+    setFilteredPurchases(result)
+  }, [purchases, searchTerm])
   
-  // Get current sales for pagination
+  // Get current purchases for pagination
   const indexOfLastItem = currentPage * itemsPerPage
   const indexOfFirstItem = indexOfLastItem - itemsPerPage
-  const currentSales = filteredSales.slice(indexOfFirstItem, indexOfLastItem)
-  const totalPages = Math.ceil(filteredSales.length / itemsPerPage)
+  const currentPurchases = filteredPurchases.slice(indexOfFirstItem, indexOfLastItem)
+  const totalPages = Math.ceil(filteredPurchases.length / itemsPerPage)
 
-  const fetchSales = async (params = {}) => {
+  const fetchPurchases = async (params = {}) => {
     setLoading(true)
     try {
       let queryParams = new URLSearchParams()
@@ -141,22 +138,22 @@ export default function SalesPage() {
         queryParams.append('endDate', params.endDate)
       }
       
-      if (params.customer) {
-        queryParams.append('customer', params.customer)
+      if (params.supplier) {
+        queryParams.append('supplier', params.supplier)
       }
       
       const queryString = queryParams.toString() ? `?${queryParams.toString()}` : ''
-      const response = await apiClient.get(`/inventory/sales${queryString}`)
+      const response = await apiClient.get(`/inventory/purchases${queryString}`)
       
-      setSales(response.data.sales)
-      setFilteredSales(response.data.sales)
+      setPurchases(response.data.purchases)
+      setFilteredPurchases(response.data.purchases)
       setTotalValue(response.data.totalValue)
       setTotalCount(response.data.count)
       setCurrentPage(1)
     } catch (error) {
       toast({
         title: "Error",
-        description: "Failed to fetch sales data",
+        description: "Failed to fetch purchases data",
         variant: "destructive"
       })
     } finally {
@@ -182,11 +179,11 @@ export default function SalesPage() {
     }
     
     if (tempSearchTerm) {
-      params.customer = tempSearchTerm
+      params.supplier = tempSearchTerm
       setSearchTerm(tempSearchTerm)
     }
     
-    fetchSales(params)
+    fetchPurchases(params)
     setFilterOpen(false)
   }
   
@@ -195,11 +192,11 @@ export default function SalesPage() {
     setSearchTerm("")
     setTempDateRange(undefined)
     setTempSearchTerm("")
-    fetchSales()
+    fetchPurchases()
     setFilterOpen(false)
   }
 
-  const clearFilter = (type: 'date' | 'customer') => {
+  const clearFilter = (type: 'date' | 'supplier') => {
     if (type === 'date') {
       setDateRange(undefined)
       setTempDateRange(undefined)
@@ -209,90 +206,95 @@ export default function SalesPage() {
     }
     
     const params: any = {}
-    if (type === 'customer' && dateRange?.from) {
+    if (type === 'supplier' && dateRange?.from) {
       params.startDate = dateRange.from.toISOString()
       if (dateRange.to) params.endDate = dateRange.to.toISOString()
     }
     if (type === 'date' && searchTerm) {
-      params.customer = searchTerm
+      params.supplier = searchTerm
     }
     
-    fetchSales(params)
+    fetchPurchases(params)
   }
   
-  const handleDeleteSale = async () => {
-    if (!deletingSaleId) return
+  const handleDeletePurchase = async () => {
+    if (!deletingPurchaseId) return
     
     setDeletingLoading(true)
     try {
-      await apiClient.delete(`/inventory/sales/${deletingSaleId}`)
-      setSales(sales.filter(sale => sale._id !== deletingSaleId))
-      setFilteredSales(filteredSales.filter(sale => sale._id !== deletingSaleId))
+      await apiClient.delete(`/inventory/purchases/${deletingPurchaseId}`)
+      setPurchases(purchases.filter(purchase => purchase._id !== deletingPurchaseId))
+      setFilteredPurchases(filteredPurchases.filter(purchase => purchase._id !== deletingPurchaseId))
       toast({
         title: "Success",
-        description: "Sale deleted successfully"
+        description: "Purchase deleted successfully"
       })
     } catch (error) {
       toast({
         title: "Error",
-        description: "Failed to delete sale",
+        description: "Failed to delete purchase",
         variant: "destructive"
       })
     } finally {
       setDeleteDialogOpen(false)
-      setDeletingSaleId(null)
+      setDeletingPurchaseId(null)
       setDeletingLoading(false)
     }
   }
   
-  const handleViewDetails = (saleId: string) => {
-    router.push(`/sales/${saleId}`)
+  const handleViewDetails = (purchaseId: string) => {
+    router.push(`/purchases/${purchaseId}`)
   }
   
   const exportToCSV = () => {
-    // Create CSV content
-    const headers = ["Invoice #", "Date", "Customer", "Payment Method", "Amount", "Products", "Notes"]
+    const headers = ["Purchase Order #", "Date", "Supplier", "Amount", "Products", "Notes"]
     
     const csvRows = [
       headers.join(","),
-      ...filteredSales.map(sale => {
-        const productsInfo = sale.products.map(p => `${p.product.name} (${p.quantity})`).join("; ")
+      ...filteredPurchases.map(purchase => {
+        const productsInfo = purchase.products.map(p => `${p.product.name} (${p.quantity})`).join("; ")
         return [
-          sale.reference,
-          new Date(sale.createdAt).toLocaleDateString(),
-          sale.customer || "Walk-in Customer",
-          sale.paymentMethod,
-          sale.totalAmount.toFixed(2),
+          purchase.reference,
+          new Date(purchase.createdAt).toLocaleDateString(),
+          getSupplierFromNotes(purchase.notes),
+          purchase.totalAmount.toFixed(2),
           productsInfo,
-          sale.notes?.replace(/,/g, ";") || ""
+          purchase.notes?.replace(/,/g, ";") || ""
         ].join(",")
       })
     ]
     
-    // Download as file
     const csvContent = csvRows.join("\n")
     const blob = new Blob([csvContent], { type: "text/csv" })
     const url = URL.createObjectURL(blob)
     const link = document.createElement("a")
     link.href = url
-    link.download = `sales-export-${new Date().toISOString().slice(0, 10)}.csv`
+    link.download = `purchases-export-${new Date().toISOString().slice(0, 10)}.csv`
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
+  }
+
+  const getSupplierFromNotes = (notes: string) => {
+    // Extract supplier from notes or return "Unknown Supplier"
+    return notes?.split(' ')[0] || "Unknown Supplier"
   }
   
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold tracking-tight">Sales</h1>
-        <NewSaleButton />
+        <h1 className="text-3xl font-bold tracking-tight">Purchases</h1>
+        <Button onClick={() => router.push('/purchases/new')}>
+          <Plus className="h-4 w-4 mr-2" />
+          New Purchase
+        </Button>
       </div>
 
       <Card>
         <CardHeader className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
           <div>
-            <CardTitle>Sales History</CardTitle>
-            <CardDescription>View and manage all your sales transactions.</CardDescription>
+            <CardTitle>Purchase History</CardTitle>
+            <CardDescription>View and manage all your purchase transactions.</CardDescription>
           </div>
           <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
             <Badge variant="secondary" className="w-auto px-2 py-1 text-xs">
@@ -309,7 +311,7 @@ export default function SalesPage() {
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input 
                 type="search" 
-                placeholder="Search sales..." 
+                placeholder="Search purchases..." 
                 className="pl-8 w-full" 
                 value={searchTerm}
                 onChange={handleSearch}
@@ -323,7 +325,7 @@ export default function SalesPage() {
                     Filter
                     {(dateRange?.from || searchTerm) && (
                       <Badge variant="destructive" className="ml-2 px-1 py-0 text-xs">
-                        {[dateRange?.from && "Date", searchTerm && "Customer"].filter(Boolean).length}
+                        {[dateRange?.from && "Date", searchTerm && "Supplier"].filter(Boolean).length}
                       </Badge>
                     )}
                   </Button>
@@ -341,9 +343,9 @@ export default function SalesPage() {
                     </div>
                     
                     <div className="space-y-2">
-                      <Label className="text-sm font-medium">Customer</Label>
+                      <Label className="text-sm font-medium">Supplier</Label>
                       <Input
-                        placeholder="Search by customer name"
+                        placeholder="Search by supplier name"
                         value={tempSearchTerm}
                         onChange={(e) => setTempSearchTerm(e.target.value)}
                         className="w-full"
@@ -387,12 +389,12 @@ export default function SalesPage() {
               )}
               {searchTerm && (
                 <Badge variant="secondary" className="text-xs">
-                  Customer: {searchTerm}
+                  Supplier: {searchTerm}
                   <Button
                     variant="ghost"
                     size="sm"
                     className="h-auto p-0 ml-2"
-                    onClick={() => clearFilter('customer')}
+                    onClick={() => clearFilter('supplier')}
                   >
                     <X className="h-3 w-3" />
                   </Button>
@@ -405,10 +407,10 @@ export default function SalesPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Invoice #</TableHead>
+                  <TableHead>Purchase Order #</TableHead>
                   <TableHead>Date</TableHead>
-                  <TableHead>Customer</TableHead>
-                  <TableHead>Payment Method</TableHead>
+                  <TableHead>Supplier</TableHead>
+                  <TableHead>Products</TableHead>
                   <TableHead className="text-right">Amount</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
@@ -425,12 +427,12 @@ export default function SalesPage() {
                       <TableCell className="text-right"><Skeleton className="h-4 w-20 ml-auto" /></TableCell>
                     </TableRow>
                   ))
-                ) : currentSales.length === 0 ? (
+                ) : currentPurchases.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={6} className="h-24 text-center">
                       <div className="flex flex-col items-center justify-center text-muted-foreground">
-                        <AlertCircle className="h-8 w-8 mb-2" />
-                        <p>No sales found</p>
+                        <Package className="h-8 w-8 mb-2" />
+                        <p>No purchases found</p>
                         {searchTerm && (
                           <p className="text-sm mt-1">Try adjusting your search</p>
                         )}
@@ -438,34 +440,27 @@ export default function SalesPage() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  currentSales.map((sale) => (
-                    <TableRow key={sale._id}>
+                  currentPurchases.map((purchase) => (
+                    <TableRow key={purchase._id}>
                       <TableCell className="font-medium">
                         <Button 
                           variant="link" 
                           className="p-0 h-auto font-medium text-primary hover:underline"
-                          onClick={() => handleViewDetails(sale._id)}
+                          onClick={() => handleViewDetails(purchase._id)}
                         >
-                          {sale.reference || `INV-${sale._id.slice(-6)}`}
+                          {purchase.reference || `PO-${purchase._id.slice(-6)}`}
                         </Button>
                       </TableCell>
                       <TableCell>
-                        {format(new Date(sale.createdAt), "PPP")}
+                        {format(new Date(purchase.createdAt), "PPP")}
                       </TableCell>
-                      <TableCell>{sale.customer || "Walk-in Customer"}</TableCell>
+                      <TableCell>{getSupplierFromNotes(purchase.notes)}</TableCell>
                       <TableCell>
-                        <Badge variant={
-                          !sale.paymentMethod ? "outline" :
-                          sale.paymentMethod === "cash" ? "outline" : 
-                          sale.paymentMethod === "credit" ? "destructive" : 
-                          "secondary"
-                        }>
-                          {!sale.paymentMethod ? "Unknown" : 
-                            sale.paymentMethod.charAt(0).toUpperCase() + sale.paymentMethod.slice(1)
-                          }
+                        <Badge variant="outline" className="text-xs">
+                          {purchase.products.length} item{purchase.products.length !== 1 ? 's' : ''}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-right">₹{sale.totalAmount.toFixed(2)}</TableCell>
+                      <TableCell className="text-right">₹{purchase.totalAmount.toFixed(2)}</TableCell>
                       <TableCell className="text-right">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
@@ -475,19 +470,19 @@ export default function SalesPage() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => handleViewDetails(sale._id)}>
+                            <DropdownMenuItem onClick={() => handleViewDetails(purchase._id)}>
                               <Eye className="h-4 w-4 mr-2" />
                               View Details
                             </DropdownMenuItem>
                             <DropdownMenuItem 
                               onClick={() => {
-                                setDeletingSaleId(sale._id)
+                                setDeletingPurchaseId(purchase._id)
                                 setDeleteDialogOpen(true)
                               }}
                               className="text-destructive"
                             >
                               <Trash2 className="h-4 w-4 mr-2" />
-                              Delete Sale
+                              Delete Purchase
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
@@ -519,16 +514,16 @@ export default function SalesPage() {
               <div className="p-3 rounded-full bg-destructive/10">
                 <AlertCircle className="h-6 w-6 text-destructive" />
               </div>
-              <AlertDialogTitle>Delete Sale</AlertDialogTitle>
+              <AlertDialogTitle>Delete Purchase</AlertDialogTitle>
             </div>
             <AlertDialogDescription className="pt-3">
-              Are you sure you want to delete this sale? This action cannot be undone.
+              Are you sure you want to delete this purchase? This action cannot be undone and will affect your inventory.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={deletingLoading}>Cancel</AlertDialogCancel>
             <AlertDialogAction 
-              onClick={handleDeleteSale}
+              onClick={handleDeletePurchase}
               disabled={deletingLoading}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >

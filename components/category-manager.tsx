@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -15,162 +15,343 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
-import { Plus, Edit, Trash2, ChevronRight } from "lucide-react"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Plus, Edit, Trash2, ChevronRight,ChevronDown, Loader2, AlertCircle, ListTree, Table as TableIcon } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import apiClient from "@/utils/apiClient"
+import { useToast } from "@/hooks/use-toast"
+
+// Define the category interface based on the backend model
+interface Category {
+  _id: string
+  name: string
+  description?: string
+  parent: string | null
+  children: Category[]
+  totalProducts: number
+  totalStockValue: number
+}
+
+// Interface for flattened category data
+interface FlatCategory {
+  _id: string
+  name: string
+  description?: string
+  parent: string | null
+  parentName?: string
+  level: number
+  totalProducts: number
+  totalStockValue: number
+  childCount: number
+}
 
 export function CategoryManager() {
+  const [activeTab, setActiveTab] = useState("hierarchy")
+  const [categories, setCategories] = useState<Category[]>([])
+  const [flatCategories, setFlatCategories] = useState<FlatCategory[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+  
+  // Dialog states
   const [addCategoryOpen, setAddCategoryOpen] = useState(false)
-  const [addSubCategoryOpen, setAddSubCategoryOpen] = useState(false)
-  const [addBrandOpen, setAddBrandOpen] = useState(false)
-  const [addVariantOpen, setAddVariantOpen] = useState(false)
-  const [selectedCategory, setSelectedCategory] = useState<number | null>(null)
-  const [selectedSubCategory, setSelectedSubCategory] = useState<number | null>(null)
-  const [selectedBrand, setSelectedBrand] = useState<number | null>(null)
+  const [editCategoryOpen, setEditCategoryOpen] = useState(false)
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isDeletingCategory, setIsDeletingCategory] = useState(false)
+  
+  // Form states
+  const [categoryName, setCategoryName] = useState("")
+  const [categoryDescription, setCategoryDescription] = useState("")
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
+  const [selectedCategoryToDelete, setSelectedCategoryToDelete] = useState<{id: string, name: string} | null>(null)
+  const [selectedParent, setSelectedParent] = useState<string | null>(null)
+  
+  const { toast } = useToast()
 
-  // Mock data for categories
-  const categories = [
-    {
-      id: 1,
-      name: "Lighting",
-      description: "Bulbs, tube lights, and other lighting products",
-      subCategories: [
-        {
-          id: 1,
-          name: "Bulbs",
-          description: "All types of bulbs",
-          brands: [
-            {
-              id: 1,
-              name: "Osaka",
-              description: "Osaka brand bulbs",
-              variants: [
-                { id: 1, name: "10 Watt", description: "10W LED Bulb" },
-                { id: 2, name: "18 Watt", description: "18W LED Bulb" },
-                { id: 3, name: "20 Watt", description: "20W LED Bulb" },
-              ],
-            },
-            {
-              id: 2,
-              name: "Phinix",
-              description: "Phinix brand bulbs",
-              variants: [
-                { id: 4, name: "9 Watt", description: "9W LED Bulb" },
-                { id: 5, name: "12 Watt", description: "12W LED Bulb" },
-              ],
-            },
-            {
-              id: 3,
-              name: "Phipro",
-              description: "Phipro brand bulbs",
-              variants: [
-                { id: 6, name: "15 Watt", description: "15W LED Bulb" },
-                { id: 7, name: "22 Watt", description: "22W LED Bulb" },
-              ],
-            },
-            {
-              id: 4,
-              name: "Philix",
-              description: "Philix brand bulbs",
-              variants: [
-                { id: 8, name: "7 Watt", description: "7W LED Bulb" },
-                { id: 9, name: "14 Watt", description: "14W LED Bulb" },
-              ],
-            },
-          ],
-        },
-        {
-          id: 2,
-          name: "Tube Lights",
-          description: "All types of tube lights",
-          brands: [
-            {
-              id: 5,
-              name: "Osaka",
-              description: "Osaka brand tube lights",
-              variants: [
-                { id: 10, name: "20 Watt", description: "20W LED Tube Light" },
-                { id: 11, name: "40 Watt", description: "40W LED Tube Light" },
-              ],
-            },
-          ],
-        },
-      ],
-    },
-    {
-      id: 2,
-      name: "Wiring",
-      description: "Wires, cables, and related accessories",
-      subCategories: [
-        {
-          id: 3,
-          name: "Copper Wires",
-          description: "All types of copper wires",
-          brands: [
-            {
-              id: 6,
-              name: "Havells",
-              description: "Havells brand wires",
-              variants: [
-                { id: 12, name: "1.5mm", description: "1.5mm Copper Wire" },
-                { id: 13, name: "2.5mm", description: "2.5mm Copper Wire" },
-              ],
-            },
-          ],
-        },
-      ],
-    },
-    {
-      id: 3,
-      name: "Fans",
-      description: "Ceiling, table, and exhaust fans",
-      subCategories: [
-        {
-          id: 4,
-          name: "Ceiling Fans",
-          description: "All types of ceiling fans",
-          brands: [
-            {
-              id: 7,
-              name: "Usha",
-              description: "Usha brand fans",
-              variants: [
-                { id: 14, name: "3 Blade", description: "3 Blade Ceiling Fan" },
-                { id: 15, name: "4 Blade", description: "4 Blade Ceiling Fan" },
-              ],
-            },
-            {
-              id: 8,
-              name: "Orient",
-              description: "Orient brand fans",
-              variants: [
-                { id: 16, name: "Standard", description: "Standard Ceiling Fan" },
-                { id: 17, name: "Premium", description: "Premium Ceiling Fan" },
-              ],
-            },
-          ],
-        },
-      ],
-    },
-  ]
+  // Fetch categories on component mount
+  useEffect(() => {
+    fetchCategories()
+  }, [])
 
-  const handleAddSubCategory = (categoryId: number) => {
-    setSelectedCategory(categoryId)
-    setAddSubCategoryOpen(true)
+  // Function to fetch categories from API
+  const fetchCategories = async () => {
+    try {
+      setIsLoading(true)
+      const response = await apiClient.get("/categories")
+      setCategories(response.data)
+      
+      // Flatten categories for table view
+      const flattened = flattenCategories(response.data)
+      setFlatCategories(flattened)
+      
+      setError(null)
+    } catch (err: any) {
+      setError("Failed to fetch categories")
+      toast({
+        title: "Error",
+        description: err.response?.data?.message || "Failed to load categories",
+        variant: "destructive"
+      })
+    } finally {
+      setIsLoading(false)
+    }
   }
 
-  const handleAddBrand = (categoryId: number, subCategoryId: number) => {
-    setSelectedCategory(categoryId)
-    setSelectedSubCategory(subCategoryId)
-    setAddBrandOpen(true)
+  // Function to flatten the category hierarchy for table view
+  const flattenCategories = (cats: Category[], parentName?: string, level = 0): FlatCategory[] => {
+    let result: FlatCategory[] = []
+    
+    cats.forEach(cat => {
+      result.push({
+        _id: cat._id,
+        name: cat.name,
+        description: cat.description,
+        parent: cat.parent,
+        parentName: parentName,
+        level: level,
+        totalProducts: cat.totalProducts || 0,
+        totalStockValue: cat.totalStockValue || 0,
+        childCount: cat.children?.length || 0
+      })
+      
+      if (cat.children && cat.children.length > 0) {
+        result = [...result, ...flattenCategories(cat.children, cat.name, level + 1)]
+      }
+    })
+    
+    return result
   }
 
-  const handleAddVariant = (categoryId: number, subCategoryId: number, brandId: number) => {
-    setSelectedCategory(categoryId)
-    setSelectedSubCategory(subCategoryId)
-    setSelectedBrand(brandId)
-    setAddVariantOpen(true)
+  // Function to add a new category
+  const handleAddCategory = async () => {
+    if (!categoryName.trim()) return
+
+    try {
+      setIsSubmitting(true)
+      await apiClient.post("/categories", {
+        name: categoryName,
+        description: categoryDescription || undefined,
+        parent: selectedParent
+      })
+      
+      toast({
+        title: "Success",
+        description: "Category created successfully"
+      })
+      
+      resetForm()
+      fetchCategories()
+    } catch (err: any) {
+      toast({
+        title: "Error",
+        description: err.response?.data?.message || "Failed to create category",
+        variant: "destructive"
+      })
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
+  // Function to update a category
+  const handleUpdateCategory = async () => {
+    if (!selectedCategory || !categoryName.trim()) return
+
+    try {
+      setIsSubmitting(true)
+      await apiClient.put(`/categories/${selectedCategory}`, {
+        name: categoryName,
+        description: categoryDescription || undefined,
+        parent: selectedParent
+      })
+      
+      toast({
+        title: "Success",
+        description: "Category updated successfully"
+      })
+      
+      resetForm()
+      fetchCategories()
+    } catch (err: any) {
+      toast({
+        title: "Error",
+        description: err.response?.data?.message || "Failed to update category",
+        variant: "destructive"
+      })
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+  
+  // Open delete confirmation modal
+  const openDeleteConfirmation = (category: Category | FlatCategory) => {
+    setSelectedCategoryToDelete({ id: category._id, name: category.name })
+    setDeleteError(null)
+    setDeleteConfirmOpen(true)
+  }
+
+  // Function to delete a category
+  const handleDeleteCategory = async () => {
+    if (!selectedCategoryToDelete) return
+
+    try {
+      setIsDeletingCategory(true)
+      setDeleteError(null)
+      await apiClient.delete(`/categories/${selectedCategoryToDelete.id}`)
+      
+      toast({
+        title: "Success",
+        description: "Category deleted successfully"
+      })
+      
+      // Close the dialog
+      setDeleteConfirmOpen(false)
+      setSelectedCategoryToDelete(null)
+      
+      // Refresh categories
+      fetchCategories()
+    } catch (err: any) {
+      const errorMessage = err.response?.data?.message || "Failed to delete category"
+      setDeleteError(errorMessage)
+      toast({
+        title: "Error",
+        description: errorMessage,
+        variant: "destructive"
+      })
+    } finally {
+      setIsDeletingCategory(false)
+    }
+  }
+  
+  // Reset form and dialog states
+  const resetForm = () => {
+    setCategoryName("")
+    setCategoryDescription("")
+    setSelectedCategory(null)
+    setSelectedParent(null)
+    setAddCategoryOpen(false)
+    setEditCategoryOpen(false)
+  }
+
+  // Open dialog to add a subcategory
+  const openAddSubcategory = (parentId: string) => {
+    setSelectedParent(parentId)
+    setCategoryName("")
+    setCategoryDescription("")
+    setAddCategoryOpen(true)
+  }
+
+  // Open dialog to edit a category
+  const openEditCategory = (category: Category | FlatCategory) => {
+    setSelectedCategory(category._id)
+    setCategoryName(category.name)
+    setCategoryDescription(category.description || "")
+    setSelectedParent(category.parent)
+    setEditCategoryOpen(true)
+  }
+
+  // Recursive function to render category hierarchy
+  const renderCategoryItem = (category: Category, depth = 0) => (
+    <AccordionItem key={category._id} value={`category-${category._id}`}>
+      <AccordionTrigger className="hover:bg-muted/50 px-4 rounded-md">
+        <ChevronRight className="h-4 w-4 mr-2 text-muted-foreground" />
+        <div className="flex items-center justify-between w-full pr-4">
+          <div className="font-medium">{category.name}</div>
+          <div className="flex items-center gap-2">
+            <Badge variant="outline">{category.children?.length || 0} Subcategories</Badge>
+            <Badge variant="outline">{category.totalProducts || 0} Products</Badge>
+            <div className="flex items-center gap-1">
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                className="h-8 w-8"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  openEditCategory(category)
+                }}
+              >
+                <Edit className="h-4 w-4" />
+              </Button>
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                className="h-8 w-8"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  openDeleteConfirmation(category)
+                }}
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  openAddSubcategory(category._id)
+                }}
+              >
+                <Plus className="h-4 w-4 mr-1" />
+                Add Subcategory
+              </Button>
+            </div>
+          </div>
+        </div>
+      </AccordionTrigger>
+      <AccordionContent className="pl-4">
+        {category.children && category.children.length > 0 ? (
+          <Accordion type="multiple" className="w-full">
+            {category.children.map(child => renderCategoryItem(child, depth + 1))}
+          </Accordion>
+        ) : (
+          <div className="py-2 text-muted-foreground">No subcategories</div>
+        )}
+      </AccordionContent>
+    </AccordionItem>
+  )
+
+  // Function to get indent spacing for table view
+  const getIndent = (level: number) => {
+    return { paddingLeft: `${level * 24 + 16}px` }
+  }
+// Add this state to your component
+const [expandedCategoryIds, setExpandedCategoryIds] = useState<Set<string>>(new Set())
+
+// Add this function to toggle category expansion
+const toggleCategoryExpansion = (categoryId: string, event: React.MouseEvent) => {
+  event.stopPropagation()
+  setExpandedCategoryIds(prev => {
+    const newSet = new Set(prev)
+    if (newSet.has(categoryId)) {
+      newSet.delete(categoryId)
+    } else {
+      newSet.add(categoryId)
+    }
+    return newSet
+  })
+}
+
+// Function to get filtered flat categories based on expansion state
+const getVisibleCategories = () => {
+  if (expandedCategoryIds.size === 0) {
+    // If nothing is expanded, show only top-level categories
+    return flatCategories.filter(cat => cat.level === 0)
+  }
+  
+  // Start with top-level categories
+  const result = flatCategories.filter(cat => cat.level === 0)
+  
+  // For each expanded category, add its direct children
+  flatCategories.forEach(cat => {
+    if (cat.parent && expandedCategoryIds.has(cat.parent)) {
+      result.push(cat)
+    }
+  })
+  
+  return result
+}
   return (
     <>
       <Card>
@@ -180,279 +361,280 @@ export function CategoryManager() {
               <CardTitle>Product Categories</CardTitle>
               <CardDescription>Manage the hierarchical categories for your products.</CardDescription>
             </div>
-            <Button onClick={() => setAddCategoryOpen(true)}>
+            <Button onClick={() => {
+              setSelectedParent(null)
+              setAddCategoryOpen(true)
+            }}>
               <Plus className="mr-2 h-4 w-4" />
               Add Category
             </Button>
           </div>
         </CardHeader>
         <CardContent>
-          <Accordion type="multiple" className="w-full">
-            {categories.map((category) => (
-              <AccordionItem key={category.id} value={`category-${category.id}`}>
-                <AccordionTrigger className="hover:bg-muted/50 px-4 rounded-md">
-                  <div className="flex items-center justify-between w-full pr-4">
-                    <div className="font-medium">{category.name}</div>
-                    <div className="flex items-center gap-2">
-                      <Badge variant="outline">{category.subCategories.length} Sub-categories</Badge>
-                      <div className="flex items-center gap-1">
-                        <Button variant="ghost" size="icon" className="h-8 w-8">
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="icon" className="h-8 w-8">
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-8"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            handleAddSubCategory(category.id)
-                          }}
-                        >
-                          <Plus className="h-4 w-4 mr-1" />
-                          Add Sub-category
-                        </Button>
-                      </div>
+          <Tabs defaultValue="hierarchy" value={activeTab} onValueChange={setActiveTab} className="w-full">
+            <div className="mb-6 border-b">
+              <TabsList className="w-full justify-start">
+                <TabsTrigger value="hierarchy" className="flex items-center gap-2">
+                  <ListTree className="h-4 w-4" />
+                  Hierarchy View
+                </TabsTrigger>
+                <TabsTrigger value="table" className="flex items-center gap-2">
+                  <TableIcon className="h-4 w-4" />
+                  Table View
+                </TabsTrigger>
+              </TabsList>
+            </div>
+            
+            {isLoading ? (
+              <div className="flex justify-center py-8">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              </div>
+            ) : error ? (
+              <div className="text-center py-8 text-destructive">
+                {error}
+              </div>
+            ) : (
+              <>
+                <TabsContent value="hierarchy" className="mt-0">
+                  {categories.length > 0 ? (
+                    <Accordion type="multiple" className="w-full">
+                      {categories.map(category => renderCategoryItem(category))}
+                    </Accordion>
+                  ) : (
+                    <div className="text-center py-8 text-muted-foreground">
+                      No categories found. Add your first category to get started.
                     </div>
-                  </div>
-                </AccordionTrigger>
-                <AccordionContent className="pl-4">
-                  <div className="space-y-2 mt-2">
-                    {category.subCategories.map((subCategory) => (
-                      <Accordion key={subCategory.id} type="multiple" className="border rounded-md">
-                        <AccordionItem value={`subcategory-${subCategory.id}`}>
-                          <AccordionTrigger className="hover:bg-muted/50 px-4 rounded-md">
-                            <div className="flex items-center justify-between w-full pr-4">
-                              <div className="flex items-center">
-                                <ChevronRight className="h-4 w-4 mr-2 text-muted-foreground" />
-                                <span className="font-medium">{subCategory.name}</span>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <Badge variant="outline">{subCategory.brands.length} Brands</Badge>
-                                <div className="flex items-center gap-1">
-                                  <Button variant="ghost" size="icon" className="h-8 w-8">
-                                    <Edit className="h-4 w-4" />
-                                  </Button>
-                                  <Button variant="ghost" size="icon" className="h-8 w-8">
-                                    <Trash2 className="h-4 w-4" />
-                                  </Button>
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    className="h-8"
-                                    onClick={(e) => {
-                                      e.stopPropagation()
-                                      handleAddBrand(category.id, subCategory.id)
-                                    }}
-                                  >
-                                    <Plus className="h-4 w-4 mr-1" />
-                                    Add Brand
-                                  </Button>
-                                </div>
-                              </div>
-                            </div>
-                          </AccordionTrigger>
-                          <AccordionContent className="pl-4">
-                            <div className="space-y-2 mt-2">
-                              {subCategory.brands.map((brand) => (
-                                <Accordion key={brand.id} type="multiple" className="border rounded-md">
-                                  <AccordionItem value={`brand-${brand.id}`}>
-                                    <AccordionTrigger className="hover:bg-muted/50 px-4 rounded-md">
-                                      <div className="flex items-center justify-between w-full pr-4">
-                                        <div className="flex items-center">
-                                          <ChevronRight className="h-4 w-4 mr-2 text-muted-foreground" />
-                                          <span className="font-medium">{brand.name}</span>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                          <Badge variant="outline">{brand.variants.length} Variants</Badge>
-                                          <div className="flex items-center gap-1">
-                                            <Button variant="ghost" size="icon" className="h-8 w-8">
-                                              <Edit className="h-4 w-4" />
-                                            </Button>
-                                            <Button variant="ghost" size="icon" className="h-8 w-8">
-                                              <Trash2 className="h-4 w-4" />
-                                            </Button>
-                                            <Button
-                                              variant="outline"
-                                              size="sm"
-                                              className="h-8"
-                                              onClick={(e) => {
-                                                e.stopPropagation()
-                                                handleAddVariant(category.id, subCategory.id, brand.id)
-                                              }}
-                                            >
-                                              <Plus className="h-4 w-4 mr-1" />
-                                              Add Variant
-                                            </Button>
-                                          </div>
-                                        </div>
-                                      </div>
-                                    </AccordionTrigger>
-                                    <AccordionContent className="pl-4">
-                                      <div className="space-y-2 mt-2">
-                                        {brand.variants.map((variant) => (
-                                          <div
-                                            key={variant.id}
-                                            className="flex items-center justify-between border rounded-md p-3"
-                                          >
-                                            <div className="flex items-center">
-                                              <ChevronRight className="h-4 w-4 mr-2 text-muted-foreground" />
-                                              <span>{variant.name}</span>
-                                              <span className="ml-2 text-sm text-muted-foreground">
-                                                {variant.description}
-                                              </span>
-                                            </div>
-                                            <div className="flex items-center gap-1">
-                                              <Button variant="ghost" size="icon" className="h-8 w-8">
-                                                <Edit className="h-4 w-4" />
-                                              </Button>
-                                              <Button variant="ghost" size="icon" className="h-8 w-8">
-                                                <Trash2 className="h-4 w-4" />
-                                              </Button>
-                                            </div>
-                                          </div>
-                                        ))}
-                                      </div>
-                                    </AccordionContent>
-                                  </AccordionItem>
-                                </Accordion>
-                              ))}
-                            </div>
-                          </AccordionContent>
-                        </AccordionItem>
-                      </Accordion>
-                    ))}
-                  </div>
-                </AccordionContent>
-              </AccordionItem>
-            ))}
-          </Accordion>
+                  )}
+                </TabsContent>
+                
+                <TabsContent value="table" className="mt-0">
+  {flatCategories.length > 0 ? (
+    <div className="border rounded-md">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead className="w-[40%]">Name</TableHead>
+            <TableHead className="w-[20%]">Parent</TableHead>
+            <TableHead className="text-center">Subcategories</TableHead>
+            <TableHead className="text-center">Products</TableHead>
+            <TableHead className="text-center">Stock Value</TableHead>
+            <TableHead className="text-right w-[160px]">Actions</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {getVisibleCategories().map((category) => (
+            <TableRow key={category._id}>
+              <TableCell style={getIndent(category.level)}>
+                <div className="flex items-center">
+                  {category.childCount > 0 ? (
+                    <Button 
+                      variant="ghost" 
+                      size="icon"
+                      className="h-5 w-5 p-0 mr-1"
+                      onClick={(e) => toggleCategoryExpansion(category._id, e)}
+                    >
+                      {expandedCategoryIds.has(category._id) ? (
+                        <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                      ) : (
+                        <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                      )}
+                    </Button>
+                  ) : (
+                    <div className="w-5 mr-1"></div>
+                  )}
+                  <span className="font-medium">{category.name}</span>
+                </div>
+              </TableCell>
+              <TableCell className="text-muted-foreground">
+                {category.parentName || "-"}
+              </TableCell>
+              <TableCell className="text-center">
+                <Badge variant="outline">{category.childCount}</Badge>
+              </TableCell>
+              <TableCell className="text-center">
+                <Badge variant="outline">{category.totalProducts}</Badge>
+              </TableCell>
+              <TableCell className="text-center">
+                ${category.totalStockValue.toFixed(2)}
+              </TableCell>
+              <TableCell className="text-right">
+                <div className="flex justify-end gap-1">
+                  <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    className="h-8 w-8"
+                    onClick={() => openEditCategory(category)}
+                  >
+                    <Edit className="h-4 w-4" />
+                  </Button>
+                  <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    className="h-8 w-8"
+                    onClick={() => openDeleteConfirmation(category)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8"
+                    onClick={() => openAddSubcategory(category._id)}
+                  >
+                    <Plus className="h-4 w-4 mr-1" />
+                    Add
+                  </Button>
+                </div>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+  ) : (
+    <div className="text-center py-8 text-muted-foreground">
+      No categories found. Add your first category to get started.
+    </div>
+  )}
+</TabsContent>
+              </>
+            )}
+          </Tabs>
         </CardContent>
       </Card>
 
-      {/* Add Category Dialog */}
-      <Dialog open={addCategoryOpen} onOpenChange={setAddCategoryOpen}>
+      {/* Add/Edit Category Dialog */}
+      <Dialog open={addCategoryOpen || editCategoryOpen} onOpenChange={(open) => {
+        if (!open) resetForm()
+      }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Add New Category</DialogTitle>
-            <DialogDescription>Create a new main category for your products.</DialogDescription>
+            <DialogTitle>
+              {editCategoryOpen ? "Edit Category" : "Add New Category"}
+            </DialogTitle>
+            <DialogDescription>
+              {editCategoryOpen 
+                ? "Update the details of this category"
+                : selectedParent
+                  ? `Create a new subcategory under ${categories.find(c => c._id === selectedParent)?.name || "the selected category"}`
+                  : "Create a new top-level category"
+              }
+            </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="space-y-2">
               <Label htmlFor="categoryName">Category Name</Label>
-              <Input id="categoryName" placeholder="e.g., Lighting, Wiring, Fans" />
+              <Input 
+                id="categoryName" 
+                placeholder="e.g., Lighting, Wiring, Fans" 
+                value={categoryName}
+                onChange={(e) => setCategoryName(e.target.value)}
+              />
             </div>
             <div className="space-y-2">
               <Label htmlFor="categoryDescription">Description (Optional)</Label>
-              <Textarea id="categoryDescription" placeholder="Brief description of this category" />
+              <Textarea 
+                id="categoryDescription" 
+                placeholder="Brief description of this category" 
+                value={categoryDescription}
+                onChange={(e) => setCategoryDescription(e.target.value)}
+              />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setAddCategoryOpen(false)}>
+            <Button variant="outline" onClick={resetForm} disabled={isSubmitting}>
               Cancel
             </Button>
-            <Button onClick={() => setAddCategoryOpen(false)}>Add Category</Button>
+            <Button 
+              onClick={editCategoryOpen ? handleUpdateCategory : handleAddCategory}
+              disabled={isSubmitting || !categoryName.trim()}
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  {editCategoryOpen ? "Updating..." : "Adding..."}
+                </>
+              ) : (
+                editCategoryOpen ? "Update Category" : "Add Category"
+              )}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Add Sub-Category Dialog */}
-      <Dialog open={addSubCategoryOpen} onOpenChange={setAddSubCategoryOpen}>
-        <DialogContent>
+      {/* Delete Confirmation Dialog */}
+      <Dialog 
+        open={deleteConfirmOpen} 
+        onOpenChange={(open) => {
+          if (!open) {
+            setDeleteConfirmOpen(false)
+            setDeleteError(null)
+          }
+        }}
+      >
+        <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Add New Sub-Category</DialogTitle>
-            <DialogDescription>
-              Create a new sub-category under{" "}
-              {selectedCategory !== null
-                ? categories.find((c) => c.id === selectedCategory)?.name
-                : "the selected category"}
-              .
+            <div className="flex items-center gap-3">
+              <div className="p-3 rounded-full bg-destructive/10">
+                <AlertCircle className="h-6 w-6 text-destructive" />
+              </div>
+              <DialogTitle>Delete Category</DialogTitle>
+            </div>
+            <DialogDescription className="pt-3">
+              Are you sure you want to delete <span className="font-medium">{selectedCategoryToDelete?.name}</span>? 
+              This action cannot be undone.
             </DialogDescription>
           </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="subCategoryName">Sub-Category Name</Label>
-              <Input id="subCategoryName" placeholder="e.g., Bulbs, Tube Lights" />
+          
+          {deleteError ? (
+            <div className="bg-destructive/10 p-3 rounded-md border border-destructive/20 mt-2">
+              <div className="flex gap-2 items-start text-destructive">
+                <AlertCircle className="h-5 w-5 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-semibold">Error</p>
+                  <p className="text-sm">{deleteError}</p>
+                </div>
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="subCategoryDescription">Description (Optional)</Label>
-              <Textarea id="subCategoryDescription" placeholder="Brief description of this sub-category" />
+          ) : (
+            <div className="mt-2 space-y-3">
+              <p className="text-sm text-muted-foreground">
+                Deleting this category will permanently remove it from the system. Make sure that:
+              </p>
+              <ul className="text-sm list-disc pl-5 text-muted-foreground space-y-1">
+                <li>It doesn't have any products assigned to it</li>
+                <li>It doesn't contain any subcategories</li>
+              </ul>
             </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setAddSubCategoryOpen(false)}>
-              Cancel
+          )}
+          
+          <DialogFooter className="gap-2 sm:gap-0 mt-4">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setDeleteConfirmOpen(false)
+                setDeleteError(null)
+              }}
+              disabled={isDeletingCategory}
+            >
+              {deleteError ? "Close" : "Cancel"}
             </Button>
-            <Button onClick={() => setAddSubCategoryOpen(false)}>Add Sub-Category</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Add Brand Dialog */}
-      <Dialog open={addBrandOpen} onOpenChange={setAddBrandOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Add New Brand</DialogTitle>
-            <DialogDescription>
-              Create a new brand under{" "}
-              {selectedSubCategory !== null &&
-                categories
-                  .find((c) => c.id === selectedCategory)
-                  ?.subCategories.find((sc) => sc.id === selectedSubCategory)?.name}
-              .
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="brandName">Brand Name</Label>
-              <Input id="brandName" placeholder="e.g., Osaka, Phinix, Havells" />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="brandDescription">Description (Optional)</Label>
-              <Textarea id="brandDescription" placeholder="Brief description of this brand" />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setAddBrandOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={() => setAddBrandOpen(false)}>Add Brand</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Add Variant Dialog */}
-      <Dialog open={addVariantOpen} onOpenChange={setAddVariantOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Add New Variant</DialogTitle>
-            <DialogDescription>
-              Create a new variant under{" "}
-              {selectedBrand !== null &&
-                categories
-                  .find((c) => c.id === selectedCategory)
-                  ?.subCategories.find((sc) => sc.id === selectedSubCategory)
-                  ?.brands.find((b) => b.id === selectedBrand)?.name}
-              .
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="variantName">Variant Name</Label>
-              <Input id="variantName" placeholder="e.g., 10 Watt, 1.5mm, 3 Blade" />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="variantDescription">Description (Optional)</Label>
-              <Textarea id="variantDescription" placeholder="Brief description of this variant" />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setAddVariantOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={() => setAddVariantOpen(false)}>Add Variant</Button>
+            {!deleteError && (
+              <Button 
+                variant="destructive" 
+                onClick={handleDeleteCategory}
+                disabled={isDeletingCategory}
+              >
+                {isDeletingCategory ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Deleting...
+                  </>
+                ) : (
+                  "Delete Category"
+                )}
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
